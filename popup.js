@@ -217,11 +217,12 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 // When the popup is opened, check if there's a stored URL from context menu
 document.addEventListener('DOMContentLoaded', async () => {
   try {
+    const urlInput = document.getElementById('urlInput');
+    urlInput.value = ''; // Clear input on load
+
     const storedAnalysis = await getStoredAnalysis();
     if (storedAnalysis) {
-      const urlInput = document.getElementById('urlInput');
-      urlInput.value = storedAnalysis.url;
-      checkUrl(storedAnalysis.url);
+      console.log("Stored Analysis Found:", storedAnalysis);
     }
   } catch (error) {
     console.error('Error checking stored analysis:', error);
