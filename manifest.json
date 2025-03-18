@@ -1,0 +1,43 @@
+{
+    "manifest_version": 3,
+    "name": "SafeLink",
+    "version": "1.0.0",
+    "description": "Detects potential phishing URLs using machine learning to help you browse safely",
+    "author": "PranetPednekar",
+    "permissions": [
+      "activeTab",
+      "storage",
+      "scripting",
+      "tabs",
+      "contextMenus",
+      "windows"
+    ],
+    "host_permissions": [
+      "http://127.0.0.1:5000/*",
+      "https://*.onrender.com/*"
+    ],
+    "background": {
+      "service_worker": "background.js",
+      "type": "module"
+    },
+    "action": {
+      "default_popup": "popup.html",
+      "default_icon": {
+        "16": "icon16.png",
+        "48": "icon48.png",
+        "128": "icon128.png"
+      }
+    },
+    "icons": {
+      "16": "icon16.png",
+      "48": "icon48.png",
+      "128": "icon128.png"
+    },
+    "web_accessible_resources": [{
+      "resources": ["features.html", "features.js"],
+      "matches": ["<all_urls>"]
+    }],
+    "minimum_chrome_version": "88",
+    "homepage_url": "https://pranetpednekar.pythonanywhere.com"
+}
+  
