@@ -8,6 +8,33 @@ function showError(message) {
   resultDiv.className = 'result phish';
 }
 
+// Function to delay execution
+const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
+
+// Function to retry fetch with exponential backoff
+async function fetchWithRetry(url, options, maxRetries = 3) {
+  for (let i = 0; i < maxRetries; i++) {
+    try {
+      const response = await fetch(url, options);
+      if (response.ok) return response;
+      
+      // If we get a 502, wait and retry
+      if (response.status === 502) {
+        const waitTime = Math.pow(2, i) * 1000; // Exponential backoff: 1s, 2s, 4s
+        await delay(waitTime);
+        continue;
+      }
+      
+      return response; // Return other status codes
+    } catch (error) {
+      if (i === maxRetries - 1) throw error;
+      const waitTime = Math.pow(2, i) * 1000;
+      await delay(waitTime);
+    }
+  }
+  throw new Error('Max retries reached');
+}
+
 // Function to store URL analysis result
 async function storeAnalysisResult(url, result) {
   await chrome.storage.local.set({
@@ -61,26 +88,22 @@ async function checkUrl(urlToCheck = null) {
   resultDiv.className = 'result';
 
   try {
-    // First check if server is running
-    const serverCheck = await fetch(API_BASE_URL, {
+    // First check if server is running with retry
+    const serverCheck = await fetchWithRetry(API_BASE_URL, {
       method: 'GET',
       headers: { 
         'Accept': 'application/json',
         'Content-Type': 'application/json'
       },
       mode: 'cors'
-    }).catch(() => null);
-
-    if (!serverCheck || !serverCheck.ok) {
-      throw new Error('Cannot connect to server. Make sure the Flask server is running at http://127.0.0.1:5000');
-    }
+    });
 
     // Add timeout to the fetch request
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+    const timeoutId = setTimeout(() => controller.abort(), 15000); // Increased timeout to 15 seconds
 
-    // Make a POST request to the Flask server
-    const response = await fetch(`${API_BASE_URL}/detect`, {
+    // Make a POST request to the Flask server with retry
+    const response = await fetchWithRetry(`${API_BASE_URL}/detect`, {
       method: 'POST',
       headers: { 
         'Content-Type': 'application/json',
@@ -95,6 +118,9 @@ async function checkUrl(urlToCheck = null) {
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
+      if (response.status === 502) {
+        throw new Error('Server is warming up. Please try again in a few moments.');
+      }
       throw new Error(errorData.error || `Server responded with status: ${response.status}`);
     }
 
@@ -122,7 +148,7 @@ async function checkUrl(urlToCheck = null) {
     moreInfo.onclick = async (e) => {
       e.preventDefault();
       try {
-        const response = await fetch(`${API_BASE_URL}/features`, {
+        const response = await fetchWithRetry(`${API_BASE_URL}/features`, {
           method: 'POST',
           headers: { 
             'Content-Type': 'application/json',
@@ -133,6 +159,9 @@ async function checkUrl(urlToCheck = null) {
         });
 
         if (!response.ok) {
+          if (response.status === 502) {
+            throw new Error('Server is warming up. Please try again in a few moments.');
+          }
           throw new Error('Failed to fetch feature details');
         }
 
@@ -160,15 +189,15 @@ async function checkUrl(urlToCheck = null) {
         chrome.tabs.create({ url: featuresUrl.toString() });
       } catch (error) {
         console.error('Error fetching feature details:', error);
-        showError('Failed to load feature details. Make sure the Flask server is running.');
+        showError(error.message || 'Failed to load feature details. Please try again in a few moments.');
       }
     };
   } catch (error) {
     console.error('Error checking URL:', error);
     if (error.name === 'AbortError') {
-      showError('Request timed out. Please check if the server is running.');
+      showError('Request timed out. Please try again in a few moments.');
     } else if (error.message.includes('Failed to fetch')) {
-      showError('Cannot connect to server. Make sure the Flask server is running at http://127.0.0.1:5000');
+      showError('Cannot connect to server. Please try again in a few moments.');
     } else {
       showError(error.message || 'An error occurred while checking the URL.');
     }

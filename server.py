@@ -22,6 +22,9 @@ CORS(app, resources={
     }
 })
 
+# Set Flask secret key from environment variable
+app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'dev-key-please-change-in-production')
+
 # Load your Gradient Boosting model
 model = pickle.load(open("gbc_final_model.pkl", "rb"))
 
