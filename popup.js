@@ -63,6 +63,55 @@ async function storeFeatureDetails(url, features) {
   });
 }
 
+// Function to handle feature details click
+async function handleFeatureDetailsClick(e, url) {
+  e.preventDefault();
+  try {
+    const response = await fetchWithRetry(`${API_BASE_URL}/features`, {
+      method: 'POST',
+      headers: { 
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'
+      },
+      mode: 'cors',
+      body: JSON.stringify({ url: url })
+    });
+
+    if (!response.ok) {
+      if (response.status === 502) {
+        throw new Error('Server is warming up. Please try again in a few moments.');
+      }
+      throw new Error('Failed to fetch feature details');
+    }
+
+    const data = await response.json();
+    if (!data.features || Object.keys(data.features).length === 0) {
+      throw new Error('No feature data received from server');
+    }
+    
+    // Store the feature details
+    await storeFeatureDetails(url, data.features);
+    
+    // Open features.html in a new tab with the feature data
+    const featuresUrl = new URL(chrome.runtime.getURL('features.html'));
+    featuresUrl.searchParams.set('url', encodeURIComponent(data.url));
+    
+    // Ensure features are properly formatted before encoding
+    const cleanedFeatures = {};
+    Object.entries(data.features).forEach(([key, value]) => {
+      cleanedFeatures[key] = typeof value === 'number' ? value : (value ? 1 : 0);
+    });
+    
+    const encodedFeatures = encodeURIComponent(JSON.stringify(cleanedFeatures));
+    featuresUrl.searchParams.set('features', encodedFeatures);
+    
+    chrome.tabs.create({ url: featuresUrl.toString() });
+  } catch (error) {
+    console.error('Error fetching feature details:', error);
+    showError(error.message || 'Failed to load feature details. Please try again in a few moments.');
+  }
+}
+
 // Function to check URL
 async function checkUrl(urlToCheck = null) {
   const urlInput = document.getElementById('urlInput');
@@ -143,55 +192,9 @@ async function checkUrl(urlToCheck = null) {
       resultDiv.className = 'result phish';
     }
 
-    // Show feature details link
+    // Show feature details link and set up click handler
     moreInfo.style.display = 'block';
-    moreInfo.onclick = async (e) => {
-      e.preventDefault();
-      try {
-        const response = await fetchWithRetry(`${API_BASE_URL}/features`, {
-          method: 'POST',
-          headers: { 
-            'Content-Type': 'application/json',
-            'Accept': 'application/json'
-          },
-          mode: 'cors',
-          body: JSON.stringify({ url: url })
-        });
-
-        if (!response.ok) {
-          if (response.status === 502) {
-            throw new Error('Server is warming up. Please try again in a few moments.');
-          }
-          throw new Error('Failed to fetch feature details');
-        }
-
-        const data = await response.json();
-        if (!data.features || Object.keys(data.features).length === 0) {
-          throw new Error('No feature data received from server');
-        }
-        
-        // Store the feature details
-        await storeFeatureDetails(url, data.features);
-        
-        // Open features.html in a new tab with the feature data
-        const featuresUrl = new URL(chrome.runtime.getURL('features.html'));
-        featuresUrl.searchParams.set('url', encodeURIComponent(data.url));
-        
-        // Ensure features are properly formatted before encoding
-        const cleanedFeatures = {};
-        Object.entries(data.features).forEach(([key, value]) => {
-          cleanedFeatures[key] = typeof value === 'number' ? value : (value ? 1 : 0);
-        });
-        
-        const encodedFeatures = encodeURIComponent(JSON.stringify(cleanedFeatures));
-        featuresUrl.searchParams.set('features', encodedFeatures);
-        
-        chrome.tabs.create({ url: featuresUrl.toString() });
-      } catch (error) {
-        console.error('Error fetching feature details:', error);
-        showError(error.message || 'Failed to load feature details. Please try again in a few moments.');
-      }
-    };
+    moreInfo.onclick = (e) => handleFeatureDetailsClick(e, url);
   } catch (error) {
     console.error('Error checking URL:', error);
     if (error.name === 'AbortError') {
@@ -204,29 +207,25 @@ async function checkUrl(urlToCheck = null) {
   }
 }
 
-// Listen for messages from background script
-chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-    if (request.action === "checkContextMenuUrl") {
-        checkUrl(request.url);
-    }
+// Listen for messages from the background script
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (message.action === "checkContextMenuUrl") {
+    checkUrl(message.url);
+  }
 });
 
-// Check for stored URL and analysis when popup opens
+// When the popup is opened, check if there's a stored URL from context menu
 document.addEventListener('DOMContentLoaded', async () => {
-    try {
-        // First check for context menu URL
-        const contextMenuData = await chrome.storage.local.get('contextMenuUrl');
-        if (contextMenuData.contextMenuUrl) {
-            const url = contextMenuData.contextMenuUrl;
-            // Clear the stored context menu URL immediately
-            await chrome.storage.local.remove('contextMenuUrl');
-            // Check the URL
-            await checkUrl(url);
-        }
-    } catch (error) {
-        console.error('Error in DOMContentLoaded:', error);
-        showError('Error loading URL: ' + error.message);
+  try {
+    const storedAnalysis = await getStoredAnalysis();
+    if (storedAnalysis) {
+      const urlInput = document.getElementById('urlInput');
+      urlInput.value = storedAnalysis.url;
+      checkUrl(storedAnalysis.url);
     }
+  } catch (error) {
+    console.error('Error checking stored analysis:', error);
+  }
 });
 
 // Add click event listener to the button
@@ -237,69 +236,5 @@ document.getElementById('urlInput').addEventListener('keypress', (event) => {
   if (event.key === 'Enter') {
     event.preventDefault();
     checkUrl();
-  }
-});
-
-// Add click event listener to the feature details link
-document.getElementById('moreInfo').addEventListener('click', async (e) => {
-  e.preventDefault();
-  const urlInput = document.getElementById('urlInput');
-  const url = urlInput.value.trim();
-  
-  if (!url) {
-    showError('Please enter a URL first');
-    return;
-  }
-
-  try {
-    // Show loading state
-    const resultDiv = document.getElementById('result');
-    resultDiv.textContent = 'Fetching feature details...';
-    resultDiv.className = 'result';
-
-    const response = await fetch(`${API_BASE_URL}/features`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Accept': 'application/json'
-      },
-      mode: 'cors',
-      credentials: 'omit',
-      body: JSON.stringify({ url })
-    });
-
-    if (!response.ok) {
-      const errorData = await response.json();
-      throw new Error(errorData.error || 'Failed to fetch feature details');
-    }
-
-    const data = await response.json();
-    if (!data.features || Object.keys(data.features).length === 0) {
-      throw new Error('No feature data received from server');
-    }
-    
-    // Store the feature details
-    await storeFeatureDetails(url, data.features);
-    
-    // Open features.html in a new tab with the feature data
-    const featuresUrl = new URL(chrome.runtime.getURL('features.html'));
-    featuresUrl.searchParams.set('url', encodeURIComponent(data.url));
-    
-    // Ensure features are properly formatted before encoding
-    const cleanedFeatures = {};
-    Object.entries(data.features).forEach(([key, value]) => {
-      cleanedFeatures[key] = typeof value === 'number' ? value : (value ? 1 : 0);
-    });
-    
-    const encodedFeatures = encodeURIComponent(JSON.stringify(cleanedFeatures));
-    featuresUrl.searchParams.set('features', encodedFeatures);
-    
-    chrome.tabs.create({ url: featuresUrl.toString() });
-    
-    // Reset the result div
-    resultDiv.textContent = 'Feature details opened in new tab';
-    resultDiv.className = 'result';
-  } catch (error) {
-    showError('Failed to load feature details. Make sure the Flask server is running.');
   }
 });
