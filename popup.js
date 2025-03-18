@@ -1,5 +1,5 @@
-// Use environment variable for API URL or fallback to localhost
-const API_BASE_URL = process.env.API_URL || 'http://127.0.0.1:5000';
+// Use production URL for the API
+const API_BASE_URL = 'https://safelink-api-0u29.onrender.com';
 
 // Function to show error in the result div
 function showError(message) {
