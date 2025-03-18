@@ -3,7 +3,7 @@
     "name": "SafeLink",
     "version": "1.0.0",
     "description": "Detects potential phishing URLs using machine learning to help you browse safely",
-    "author": "PranetPednekar",
+    "author": ["PranetPednekar","AkashSingh"],
     "permissions": [
       "activeTab",
       "storage",
