@@ -7,8 +7,6 @@
     "permissions": [
       "activeTab",
       "storage",
-      "scripting",
-      "tabs",
       "contextMenus",
       "windows"
     ],
