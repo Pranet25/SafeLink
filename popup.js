@@ -126,7 +126,13 @@ async function checkUrl(urlToCheck = null) {
     resultDiv.className = 'result';
     return;
   }
-
+  try {
+    new URL(url);
+  } catch (error) {
+    resultDiv.textContent = 'Please enter a valid URL (e.g., https://www.example.com)';
+    resultDiv.className = 'result phish';
+    return;
+  }
   // Set the URL in the input field if it came from context menu
   if (urlToCheck) {
     urlInput.value = urlToCheck;
